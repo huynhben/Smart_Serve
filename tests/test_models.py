@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 import pytest
 
-from food_tracker.models import DailyLog, FoodEntry, FoodItem, group_entries_by_day
+from food_tracker.models import DailyLog, FoodEntry, FoodItem, NutritionGoals, group_entries_by_day
 
 
 class TestFoodItem:
@@ -193,3 +193,27 @@ class TestGroupEntriesByDay:
         grouped = group_entries_by_day([])
         assert grouped == {}
 
+
+class TestNutritionGoals:
+    """Tests for NutritionGoals dataclass."""
+
+    def test_defaults(self):
+        goals = NutritionGoals()
+        assert goals.calories is None
+        assert goals.macronutrients == {}
+
+    def test_from_dict(self):
+        data = {"calories": 2000, "macronutrients": {"protein": 150}}
+        goals = NutritionGoals.from_dict(data)
+        assert goals.calories == 2000
+        assert goals.macronutrients == {"protein": 150}
+
+    def test_merge_updates_and_clears(self):
+        goals = NutritionGoals(calories=2000, macronutrients={"protein": 150, "fat": 60})
+        updated = goals.merge(macronutrients={"protein": 160, "fat": None})
+        assert updated.macronutrients == {"protein": 160}
+        assert updated.calories == 2000
+
+    def test_cleaned_macros_casts_to_float(self):
+        goals = NutritionGoals(macronutrients={"protein": 150})
+        assert isinstance(goals.cleaned_macros()["protein"], float)

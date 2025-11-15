@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from food_tracker.models import FoodEntry, FoodItem
-from food_tracker.storage import FoodLogRepository
+from food_tracker.models import FoodEntry, FoodItem, NutritionGoals
+from food_tracker.storage import FoodLogRepository, NutritionGoalRepository
 
 
 class TestFoodLogRepository:
@@ -156,3 +156,32 @@ class TestFoodLogRepository:
         assert "timestamp" in data[0]
         assert data[0]["timestamp"] == sample_food_entry.timestamp.isoformat()
 
+
+class TestNutritionGoalRepository:
+    """Tests for NutritionGoalRepository."""
+
+    def test_default_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        repo = NutritionGoalRepository()
+        expected = tmp_path / ".food_tracker" / "goals.json"
+        assert repo._storage_path == expected
+        assert expected.parent.exists()
+
+    def test_custom_path(self, temp_goal_path):
+        repo = NutritionGoalRepository(storage_path=temp_goal_path)
+        assert repo._storage_path == temp_goal_path
+
+    def test_load_without_file(self, temp_goal_path):
+        repo = NutritionGoalRepository(storage_path=temp_goal_path)
+        goals = repo.load_goals()
+        assert goals.calories is None
+        assert goals.macronutrients == {}
+
+    def test_save_and_load_goals(self, temp_goal_path):
+        repo = NutritionGoalRepository(storage_path=temp_goal_path)
+        goals = NutritionGoals(calories=2100, macronutrients={"protein": 150})
+        repo.save_goals(goals)
+
+        loaded = repo.load_goals()
+        assert loaded.calories == 2100
+        assert loaded.macronutrients == {"protein": 150}

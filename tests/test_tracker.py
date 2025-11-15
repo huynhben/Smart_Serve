@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -19,10 +19,14 @@ class TestFoodTracker:
         assert tracker.repository is not None
         assert tracker.entries() == []
 
-    def test_tracker_loads_existing_entries(self, repository, sample_food_entry, recognition_engine):
+    def test_tracker_loads_existing_entries(self, repository, sample_food_entry, recognition_engine, goal_repository):
         """Test that tracker loads existing entries from repository."""
         repository.save_entries([sample_food_entry])
-        tracker = FoodTracker(recogniser=recognition_engine, repository=repository)
+        tracker = FoodTracker(
+            recogniser=recognition_engine,
+            repository=repository,
+            goal_repository=goal_repository,
+        )
         entries = tracker.entries()
         assert len(entries) == 1
         assert entries[0].food.name == sample_food_entry.food.name
@@ -65,11 +69,15 @@ class TestFoodTracker:
         entry = tracker.log_food(sample_food_item, quantity=1.0, timestamp=custom_time)
         assert entry.timestamp == custom_time
 
-    def test_log_food_persists_to_storage(self, tracker, repository, sample_food_item):
+    def test_log_food_persists_to_storage(self, tracker, repository, sample_food_item, goal_repository):
         """Test that logged food is persisted to storage."""
         entry = tracker.log_food(sample_food_item, quantity=1.0)
         # Create new tracker to verify persistence
-        new_tracker = FoodTracker(recogniser=tracker.recogniser, repository=repository)
+        new_tracker = FoodTracker(
+            recogniser=tracker.recogniser,
+            repository=repository,
+            goal_repository=goal_repository,
+        )
         entries = new_tracker.entries()
         assert len(entries) == 1
         assert entries[0].food.name == sample_food_item.name
@@ -199,3 +207,44 @@ class TestFoodTracker:
         entries.append("should not affect internal list")
         assert len(tracker.entries()) == 1
 
+    def test_update_and_get_goals(self, tracker):
+        """Tracker should persist nutrition goals."""
+        tracker.update_goals(calories=2000, macronutrients={"protein": 150})
+        goals = tracker.nutrition_goals()
+        assert goals.calories == 2000
+        assert goals.macronutrients["protein"] == 150
+
+    def test_progress_for_day_structure(self, tracker, sample_food_item):
+        """Progress report should include calories and macros."""
+        tracker.log_food(sample_food_item, quantity=1.0, timestamp=datetime.utcnow())
+        tracker.update_goals(calories=2000, macronutrients={"protein": 120})
+        progress = tracker.progress_for_day(date.today())
+        assert progress["calories"]["consumed"] > 0
+        assert "protein" in progress["macronutrients"]
+
+    def test_weekly_overview_counts_active_days(self, tracker, sample_food_item):
+        """Weekly overview should capture rolling window."""
+        today = date.today()
+        tracker.log_food(sample_food_item, quantity=1.0, timestamp=datetime(today.year, today.month, today.day, 12))
+        tracker.log_food(
+            sample_food_item,
+            quantity=1.0,
+            timestamp=datetime.today() - timedelta(days=2),
+        )
+        weekly = tracker.weekly_overview()
+        assert weekly["active_days"] >= 1
+        assert len(weekly["days"]) == 7
+
+    def test_logging_streak_breaks_on_gap(self, tracker, sample_food_item):
+        """Logging streak should count consecutive days."""
+        today = datetime.today()
+        tracker.log_food(sample_food_item, quantity=1.0, timestamp=today)
+        tracker.log_food(sample_food_item, quantity=1.0, timestamp=today - timedelta(days=1))
+        streak = tracker.logging_streak()
+        assert streak >= 2
+
+    def test_lifetime_stats_empty(self, tracker):
+        """Lifetime stats should handle no entries."""
+        stats = tracker.lifetime_stats()
+        assert stats["total_entries"] == 0
+        assert stats["most_logged_food"] is None

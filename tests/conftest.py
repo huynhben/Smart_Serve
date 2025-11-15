@@ -11,7 +11,7 @@ import pytest
 
 from food_tracker.ai import FoodRecognitionEngine
 from food_tracker.models import FoodEntry, FoodItem
-from food_tracker.storage import FoodLogRepository
+from food_tracker.storage import FoodLogRepository, NutritionGoalRepository
 from food_tracker.tracker import FoodTracker
 
 
@@ -52,15 +52,33 @@ def repository(temp_storage_path: Path) -> FoodLogRepository:
 
 
 @pytest.fixture
+def temp_goal_path(tmp_path: Path) -> Path:
+    """Create a temporary path for storing goals."""
+    goal_dir = tmp_path / "food_tracker_goals"
+    goal_dir.mkdir(parents=True)
+    return goal_dir / "goals.json"
+
+
+@pytest.fixture
+def goal_repository(temp_goal_path: Path) -> NutritionGoalRepository:
+    """Create a nutrition goal repository for testing."""
+    return NutritionGoalRepository(storage_path=temp_goal_path)
+
+
+@pytest.fixture
 def recognition_engine() -> FoodRecognitionEngine:
     """Create a recognition engine instance."""
     return FoodRecognitionEngine()
 
 
 @pytest.fixture
-def tracker(recognition_engine: FoodRecognitionEngine, repository: FoodLogRepository) -> FoodTracker:
+def tracker(
+    recognition_engine: FoodRecognitionEngine,
+    repository: FoodLogRepository,
+    goal_repository: NutritionGoalRepository,
+) -> FoodTracker:
     """Create a tracker instance with test dependencies."""
-    return FoodTracker(recogniser=recognition_engine, repository=repository)
+    return FoodTracker(recogniser=recognition_engine, repository=repository, goal_repository=goal_repository)
 
 
 @pytest.fixture
@@ -91,4 +109,3 @@ def temp_foods_file(tmp_path: Path, sample_foods_data: list[dict]) -> Path:
     with foods_file.open("w", encoding="utf8") as f:
         json.dump(sample_foods_data, f)
     return foods_file
-

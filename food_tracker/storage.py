@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List
 
-from .models import FoodEntry, FoodItem
+from .models import FoodEntry, FoodItem, NutritionGoals
 
 
 class FoodLogRepository:
@@ -55,3 +55,25 @@ class FoodLogRepository:
                 FoodEntry(food=food, quantity=float(record.get("quantity", 1.0)), timestamp=timestamp)
             )
         return entries
+
+
+class NutritionGoalRepository:
+    """Persist user nutrition goals separately from log entries."""
+
+    def __init__(self, storage_path: Path | None = None) -> None:
+        if storage_path is None:
+            storage_path = Path.home() / ".food_tracker" / "goals.json"
+        self._storage_path = storage_path
+        self._storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def save_goals(self, goals: NutritionGoals) -> None:
+        payload = goals.as_dict()
+        with self._storage_path.open("w", encoding="utf8") as handle:
+            json.dump(payload, handle, indent=2)
+
+    def load_goals(self) -> NutritionGoals:
+        if not self._storage_path.exists():
+            return NutritionGoals()
+        with self._storage_path.open("r", encoding="utf8") as handle:
+            data = json.load(handle)
+        return NutritionGoals.from_dict(data)

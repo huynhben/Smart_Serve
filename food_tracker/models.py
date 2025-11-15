@@ -26,6 +26,40 @@ class FoodItem:
 
 
 @dataclass
+class NutritionGoals:
+    """Stores daily nutrition targets for calories and macronutrients."""
+
+    calories: float | None = None
+    macronutrients: Dict[str, float] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {"calories": self.calories, "macronutrients": self.macronutrients}
+        return payload
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object] | None) -> "NutritionGoals":
+        if not data:
+            return cls()
+        calories = data.get("calories")
+        macros = data.get("macronutrients", {}) or {}
+        return cls(calories=float(calories) if calories is not None else None, macronutrients=dict(macros))
+
+    def cleaned_macros(self) -> Dict[str, float]:
+        return {nutrient: float(amount) for nutrient, amount in self.macronutrients.items() if amount is not None}
+
+    def merge(self, calories: float | None = None, macronutrients: Dict[str, float] | None = None) -> "NutritionGoals":
+        next_calories = calories if calories is not None else self.calories
+        next_macros = self.cleaned_macros()
+        if macronutrients:
+            for nutrient, amount in macronutrients.items():
+                if amount is None:
+                    next_macros.pop(nutrient, None)
+                else:
+                    next_macros[nutrient] = float(amount)
+        return NutritionGoals(calories=next_calories, macronutrients=next_macros)
+
+
+@dataclass
 class FoodEntry:
     """A log entry for the consumption of a food item."""
 

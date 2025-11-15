@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -9,10 +10,11 @@ from typing import Dict, List
 from fastapi import APIRouter, Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .ai import FoodRecognitionEngine
 from .models import DailyLog, FoodEntry, FoodItem
+from .storage import FoodLogRepository, NutritionGoalRepository
 from .tracker import FoodTracker
 
 
@@ -40,6 +42,20 @@ class CustomFoodPayload(FoodPayload):
     pass
 
 
+class GoalsPayload(BaseModel):
+    """Schema representing nutrition goals."""
+
+    calories: float | None = Field(default=None, gt=0)
+    macronutrients: Dict[str, float | None] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_macros(self) -> "GoalsPayload":
+        for nutrient, amount in self.macronutrients.items():
+            if amount is not None and amount < 0:
+                raise ValueError(f"Macro goal for {nutrient} must be non-negative.")
+        return self
+
+
 app = FastAPI(title="Food Tracker", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +70,15 @@ def _build_tracker() -> FoodTracker:
     """Initialise the tracker with the default recognition engine."""
 
     recogniser = FoodRecognitionEngine()
-    return FoodTracker(recogniser=recogniser)
+    data_dir = os.environ.get("FOOD_TRACKER_DATA_DIR")
+    if data_dir:
+        base_path = Path(data_dir).expanduser()
+        repository = FoodLogRepository(storage_path=base_path / "log.json")
+        goal_repository = NutritionGoalRepository(storage_path=base_path / "goals.json")
+    else:
+        repository = FoodLogRepository()
+        goal_repository = NutritionGoalRepository()
+    return FoodTracker(recogniser=recogniser, repository=repository, goal_repository=goal_repository)
 
 
 @app.on_event("startup")
@@ -100,6 +124,10 @@ def _serialise_daily_log(log: DailyLog) -> Dict[str, object]:
         "total_calories": log.total_calories(),
         "total_macronutrients": log.total_macros(),
     }
+
+
+def _serialise_goals(tracker: FoodTracker) -> Dict[str, object]:
+    return tracker.nutrition_goals().as_dict()
 
 
 @api_router.get("/foods/search")
@@ -158,6 +186,27 @@ def create_entry(payload: EntryPayload, tracker: FoodTracker = Depends(get_track
 def summary(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
     logs = [_serialise_daily_log(log) for log in tracker.daily_summary()]
     return {"days": logs}
+
+
+@api_router.get("/goals")
+def get_goals(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
+    return {"goals": _serialise_goals(tracker)}
+
+
+@api_router.put("/goals")
+def update_goals(payload: GoalsPayload, tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
+    updated = tracker.update_goals(calories=payload.calories, macronutrients=payload.macronutrients)
+    return {"goals": updated.as_dict()}
+
+
+@api_router.get("/stats")
+def stats(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
+    return {
+        "today": tracker.progress_for_day(),
+        "weekly": tracker.weekly_overview(),
+        "lifetime": tracker.lifetime_stats(),
+        "goals": _serialise_goals(tracker),
+    }
 
 
 class EditEntryPayload(BaseModel):
