@@ -60,6 +60,38 @@
       </section>
 
       <section class="card">
+        <h2>Nutrition goals</h2>
+        <form id="goal-form" class="form-grid goals-form">
+          <label for="goal-calories">Daily calorie target</label>
+          <input id="goal-calories" name="goal-calories" type="number" min="0" step="10" placeholder="e.g. 2100" />
+
+          <fieldset class="macros compact">
+            <legend>Macro targets (grams)</legend>
+            <label for="goal-protein">Protein</label>
+            <input id="goal-protein" name="goal-protein" type="number" min="0" step="1" placeholder="140" />
+
+            <label for="goal-carbs">Carbs</label>
+            <input id="goal-carbs" name="goal-carbs" type="number" min="0" step="1" placeholder="200" />
+
+            <label for="goal-fat">Fat</label>
+            <input id="goal-fat" name="goal-fat" type="number" min="0" step="1" placeholder="60" />
+          </fieldset>
+
+          <p id="goal-status" class="form-hint">Set calories and macros to get personalised progress tracking.</p>
+
+          <div class="form-actions">
+            <button type="submit">Save goals</button>
+            <button type="button" id="goal-reset" class="secondary-button">Clear goals</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Today's progress</h2>
+        <div id="today-progress" class="progress-panel" aria-live="polite"></div>
+      </section>
+
+      <section class="card">
         <h2>Today's log</h2>
         <div id="log-entries" class="log-entries" aria-live="polite"></div>
       </section>
@@ -68,6 +100,17 @@
         <h2>Daily summaries</h2>
         <div id="summary" class="summary" aria-live="polite"></div>
       </section>
+
+      <section class="card">
+        <h2>Weekly insights</h2>
+        <div id="weekly-insights" class="weekly-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="card">
+        <h2>Lifetime stats</h2>
+        <div id="lifetime-stats" class="lifetime-stats" aria-live="polite"></div>
+      </section>
+
       <template id="log-entry-template">
         <article class="log-entry">
           <h3 class="log-title"></h3>

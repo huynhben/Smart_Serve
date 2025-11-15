@@ -222,6 +222,14 @@ class TestFoodTracker:
         assert progress["calories"]["consumed"] > 0
         assert "protein" in progress["macronutrients"]
 
+    def test_update_goals_can_clear_targets(self, tracker):
+        """Goals can be cleared by sending None."""
+        tracker.update_goals(calories=1800, macronutrients={"protein": 120})
+        tracker.update_goals(calories=None, macronutrients={"protein": None})
+        goals = tracker.nutrition_goals()
+        assert goals.calories is None
+        assert "protein" not in goals.macronutrients
+
     def test_weekly_overview_counts_active_days(self, tracker, sample_food_item):
         """Weekly overview should capture rolling window."""
         today = date.today()

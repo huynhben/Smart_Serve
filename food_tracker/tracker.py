@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional
 
 from .ai import FoodRecognitionEngine, RecognisedFood
-from .models import DailyLog, FoodEntry, FoodItem, NutritionGoals, group_entries_by_day
+from .models import DailyLog, FoodEntry, FoodItem, NutritionGoals, UNSET, group_entries_by_day
 from .storage import FoodLogRepository, NutritionGoalRepository
 
 
@@ -105,7 +105,11 @@ class FoodTracker:
             macronutrients=self._goals.cleaned_macros(),
         )
 
-    def update_goals(self, calories: float | None = None, macronutrients: Optional[Dict[str, float]] = None) -> NutritionGoals:
+    def update_goals(
+        self,
+        calories: float | None | object = UNSET,
+        macronutrients: Optional[Dict[str, float | None]] = None,
+    ) -> NutritionGoals:
         self._goals = self._goals.merge(calories=calories, macronutrients=macronutrients)
         self.goal_repository.save_goals(self._goals)
         return self.nutrition_goals()

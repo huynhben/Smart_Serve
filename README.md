@@ -51,3 +51,10 @@ python ai.py log "grilled chicken salad" --quantity 1.5
 # Manually log a custom food
 
 python ai.py add "Homemade Protein Bar" "1 bar" 210 --protein 15 --carbs 18 --fat 8
+
+Features at a Glance
+- AI-assisted food scanning with instant logging from the browser or CLI.
+- Custom food logging with optional macro tracking and shared persistence between UI/CLI.
+- Personalised nutrition goals with live progress bars for calories and macros.
+- Weekly insights with streak tracking, per-day calorie totals, and lifetime stats.
+- New API endpoints (`/api/goals`, `/api/stats`) plus CLI helpers (`goals`, `stats`) for advanced workflows.

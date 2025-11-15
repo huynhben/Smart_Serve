@@ -12,9 +12,14 @@ from food_tracker.models import FoodItem
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
+def client(tmp_path, monkeypatch) -> TestClient:
+    """Create a test client for the FastAPI app with isolated storage."""
+    data_dir = tmp_path / "api_data"
+    data_dir.mkdir()
+    monkeypatch.setenv("FOOD_TRACKER_DATA_DIR", str(data_dir))
+    with TestClient(app) as client:
+        client.app.state.tracker = None  # Reset tracker to use new storage
+        yield client
 
 
 @pytest.fixture
@@ -266,3 +271,50 @@ class TestCORS:
         # CORS middleware should be configured
         # Note: TestClient might not show all CORS headers, but the middleware is configured
 
+
+class TestGoalsEndpoint:
+    """Tests for /api/goals endpoints."""
+
+    def test_get_goals_default(self, client):
+        response = client.get("/api/goals")
+        assert response.status_code == 200
+        data = response.json()
+        assert "goals" in data
+        assert data["goals"]["calories"] is None
+
+    def test_update_goals(self, client):
+        payload = {"calories": 2000, "macronutrients": {"protein": 150, "fat": 60}}
+        response = client.put("/api/goals", json=payload)
+        assert response.status_code == 200
+        data = response.json()["goals"]
+        assert data["calories"] == 2000
+        assert data["macronutrients"]["protein"] == 150
+
+        # Ensure GET reflects updated goals
+        response = client.get("/api/goals")
+        goals = response.json()["goals"]
+        assert goals["calories"] == 2000
+
+
+class TestStatsEndpoint:
+    """Tests for /api/stats endpoint."""
+
+    def test_stats_structure_without_entries(self, client):
+        response = client.get("/api/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert "today" in data
+        assert "weekly" in data
+        assert "lifetime" in data
+
+    def test_stats_with_entries(self, client, sample_food_payload):
+        client.post("/api/entries", json={"food": sample_food_payload, "quantity": 2.0})
+        response = client.get("/api/stats")
+        assert response.status_code == 200
+        data = response.json()
+        today = data["today"]
+        assert today["calories"]["consumed"] > 0
+        weekly = data["weekly"]
+        assert isinstance(weekly["days"], list)
+        lifetime = data["lifetime"]
+        assert lifetime["total_entries"] >= 1

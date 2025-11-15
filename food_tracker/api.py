@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from .ai import FoodRecognitionEngine
-from .models import DailyLog, FoodEntry, FoodItem
+from .models import DailyLog, FoodEntry, FoodItem, UNSET
 from .storage import FoodLogRepository, NutritionGoalRepository
 from .tracker import FoodTracker
 
@@ -195,7 +195,10 @@ def get_goals(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
 
 @api_router.put("/goals")
 def update_goals(payload: GoalsPayload, tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
-    updated = tracker.update_goals(calories=payload.calories, macronutrients=payload.macronutrients)
+    fields_set = getattr(payload, "model_fields_set", getattr(payload, "__fields_set__", set()))
+    calories_value = payload.calories if "calories" in fields_set else UNSET
+    macronutrient_payload = payload.macronutrients if "macronutrients" in fields_set else None
+    updated = tracker.update_goals(calories=calories_value, macronutrients=macronutrient_payload)
     return {"goals": updated.as_dict()}
 
 

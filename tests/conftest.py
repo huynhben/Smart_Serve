@@ -15,6 +15,15 @@ from food_tracker.storage import FoodLogRepository, NutritionGoalRepository
 from food_tracker.tracker import FoodTracker
 
 
+@pytest.fixture(autouse=True)
+def temp_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Ensure the application uses a per-test data directory."""
+    data_dir = tmp_path / "food_tracker_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FOOD_TRACKER_DATA_DIR", str(data_dir))
+    yield
+
+
 @pytest.fixture
 def temp_storage_path(tmp_path: Path) -> Path:
     """Create a temporary storage path for testing."""

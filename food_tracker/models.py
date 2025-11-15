@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Dict, Iterable, List
 
+UNSET = object()
+
 
 @dataclass
 class FoodItem:
@@ -33,8 +35,7 @@ class NutritionGoals:
     macronutrients: Dict[str, float] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, object]:
-        payload: Dict[str, object] = {"calories": self.calories, "macronutrients": self.macronutrients}
-        return payload
+        return {"calories": self.calories, "macronutrients": self.cleaned_macros()}
 
     @classmethod
     def from_dict(cls, data: Dict[str, object] | None) -> "NutritionGoals":
@@ -42,13 +43,20 @@ class NutritionGoals:
             return cls()
         calories = data.get("calories")
         macros = data.get("macronutrients", {}) or {}
-        return cls(calories=float(calories) if calories is not None else None, macronutrients=dict(macros))
+        return cls(
+            calories=float(calories) if calories is not None else None,
+            macronutrients={nutrient: float(amount) for nutrient, amount in macros.items()},
+        )
 
     def cleaned_macros(self) -> Dict[str, float]:
         return {nutrient: float(amount) for nutrient, amount in self.macronutrients.items() if amount is not None}
 
-    def merge(self, calories: float | None = None, macronutrients: Dict[str, float] | None = None) -> "NutritionGoals":
-        next_calories = calories if calories is not None else self.calories
+    def merge(
+        self,
+        calories: float | None | object = UNSET,
+        macronutrients: Dict[str, float | None] | None = None,
+    ) -> "NutritionGoals":
+        next_calories = self.calories if calories is UNSET else calories
         next_macros = self.cleaned_macros()
         if macronutrients:
             for nutrient, amount in macronutrients.items():

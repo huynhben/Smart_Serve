@@ -12,6 +12,10 @@ Fullstack delivery – FastAPI powers a JSON API and serves a polished single-pa
 
 Extensible design – the recognition engine is intentionally simple so it can run offline, but its API can be swapped for a heavier ML model when needed.
 
+Goal tracking – define daily calorie and macro targets and monitor progress via the new `/api/goals` endpoint, CLI helpers, and UI progress panels.
+
+Weekly intelligence – the `/api/stats` endpoint powers streaks, average calories, and lifetime stats rendered directly in the dashboard.
+
 python ai.py summary
 Data is stored as JSON under ~/.food_tracker/log.json so you can safely delete that file to reset your log. The web UI, API, and CLI all share the same persistent log.
 

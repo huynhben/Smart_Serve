@@ -7,6 +7,7 @@ from datetime import date
 from typing import Iterable
 
 from .ai import FoodRecognitionEngine
+from .models import UNSET
 from .tracker import FoodTracker
 
 
@@ -147,12 +148,14 @@ class CLI:
             for nutrient in ("protein", "carbs", "fat")
             if getattr(args, nutrient) is not None
         }
-        calories = args.calories
+        calories = UNSET
         if args.clear:
             macros = {nutrient: None for nutrient in ("protein", "carbs", "fat")}
             calories = None
+        elif args.calories is not None:
+            calories = args.calories
 
-        if calories is not None or macros:
+        if macros or calories is not UNSET:
             updated = self.tracker.update_goals(calories=calories, macronutrients=macros or None)
             macro_text = _format_macros(updated.macronutrients)
             cal_text = f"{updated.calories:.0f} kcal" if updated.calories else "not set"

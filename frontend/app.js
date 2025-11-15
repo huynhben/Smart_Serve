@@ -34,6 +34,129 @@ function formatMacros(macronutrients) {
   return `Macros: ${entries.map(([key, value]) => `${key} ${Number(value).toFixed(1)}g`).join(' • ')}`;
 }
 
+function formatDate(value) {
+  const date = value.includes('T') ? new Date(value) : new Date(`${value}T00:00:00`);
+  return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function clampProgress(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, value));
+}
+
+function createProgressCard(label, payload, unit = 'kcal') {
+  const card = document.createElement('div');
+  card.className = 'progress-card';
+
+  const heading = document.createElement('h3');
+  heading.textContent = label;
+  card.appendChild(heading);
+
+  const meta = document.createElement('div');
+  meta.className = 'progress-meta';
+  if (payload.target) {
+    meta.innerHTML = `<span>${payload.consumed.toFixed(unit === 'g' ? 1 : 0)} ${unit}</span>
+      <span>${payload.target.toFixed(unit === 'g' ? 1 : 0)} ${unit} goal</span>`;
+  } else {
+    meta.innerHTML = `<span>${payload.consumed.toFixed(unit === 'g' ? 1 : 0)} ${unit}</span>
+      <span>No target set</span>`;
+  }
+  card.appendChild(meta);
+
+  const bar = document.createElement('div');
+  bar.className = 'progress-bar';
+  const fill = document.createElement('div');
+  fill.className = 'progress-bar-fill';
+  const progressValue = payload.progress !== undefined && payload.progress !== null ? clampProgress(payload.progress) : clampProgress(payload.consumed > 0 ? 1 : 0);
+  fill.style.width = `${(progressValue * 100).toFixed(0)}%`;
+  bar.appendChild(fill);
+  card.appendChild(bar);
+
+  return card;
+}
+
+function renderProgress(stats) {
+  const container = document.getElementById('today-progress');
+  container.innerHTML = '';
+  if (!stats?.today) {
+    renderEmptyState(container, 'Log a food or set a goal to see progress.');
+    return;
+  }
+
+  container.appendChild(createProgressCard('Calories', stats.today.calories, 'kcal'));
+
+  const macros = stats.today.macronutrients || {};
+  const macroKeys = Object.keys(macros);
+  if (!macroKeys.length) {
+    const hint = document.createElement('p');
+    hint.className = 'form-hint';
+    hint.textContent = 'Add macro targets to break down progress by protein, carbs, and fat.';
+    container.appendChild(hint);
+  } else {
+    macroKeys.forEach((nutrient) => {
+      const card = createProgressCard(nutrient.toUpperCase(), macros[nutrient], 'g');
+      container.appendChild(card);
+    });
+  }
+}
+
+function renderWeekly(weekly) {
+  const container = document.getElementById('weekly-insights');
+  container.innerHTML = '';
+
+  if (!weekly?.days?.length) {
+    renderEmptyState(container, 'No weekly data yet. Track meals for a few days to unlock insights.');
+    return;
+  }
+
+  const streakRow = document.createElement('div');
+  streakRow.className = 'week-row';
+  streakRow.innerHTML = `<strong>Current streak</strong><span class="streak-badge">🔥 ${weekly.current_streak} days</span>`;
+  container.appendChild(streakRow);
+
+  const averageRow = document.createElement('div');
+  averageRow.className = 'week-row';
+  averageRow.innerHTML = `<strong>Average calories (active days)</strong><span>${weekly.average_calories.toFixed(0)} kcal</span>`;
+  container.appendChild(averageRow);
+
+  weekly.days.forEach((day) => {
+    const row = document.createElement('div');
+    row.className = 'week-row';
+    const entriesLabel = day.entry_count ? `${day.entry_count} entries` : 'No meals';
+    row.innerHTML = `<strong>${formatDate(day.day)}</strong><span>${day.calories.toFixed(0)} kcal · ${entriesLabel}</span>`;
+    container.appendChild(row);
+  });
+}
+
+function renderLifetime(lifetime) {
+  const container = document.getElementById('lifetime-stats');
+  container.innerHTML = '';
+
+  if (!lifetime || !lifetime.total_entries) {
+    renderEmptyState(container, 'No history yet. Once you start logging, your lifetime stats will appear here.');
+    return;
+  }
+
+  const stats = [
+    { label: 'Entries logged', value: lifetime.total_entries },
+    { label: 'Calories tracked', value: `${lifetime.total_calories.toFixed(0)} kcal` },
+    { label: 'First entry', value: lifetime.first_entry ? formatDate(lifetime.first_entry) : 'Not logged yet' },
+    {
+      label: 'Most logged food',
+      value: lifetime.most_logged_food ? `${lifetime.most_logged_food.name} (${lifetime.most_logged_food.count}×)` : '—',
+    },
+  ];
+
+  stats.forEach((stat) => {
+    const pill = document.createElement('div');
+    pill.className = 'stat-pill';
+    pill.innerHTML = `<span>${stat.label}</span><span>${stat.value}</span>`;
+    container.appendChild(pill);
+  });
+}
+
 function renderScanResults(results) {
   const container = document.getElementById('scan-results');
   container.innerHTML = '';
@@ -63,7 +186,7 @@ function renderScanResults(results) {
           method: 'POST',
           body: JSON.stringify({ food, quantity }),
         });
-        await Promise.all([loadEntries(), loadSummary()]);
+        await refreshCoreData();
       } catch (error) {
         alert(error.message);
       } finally {
@@ -75,15 +198,12 @@ function renderScanResults(results) {
   });
 }
 
-// ...existing code...
-
-async function renderEntries(entries) {
+function renderEntries(entries) {
   const container = document.getElementById('log-entries');
   container.innerHTML = '';
 
   if (!entries.items.length) {
     renderEmptyState(container, 'No foods logged yet. Scan or add one to get started.');
-    await renderSummary(); // Update the summary to show 0 if no entries exist
     return;
   }
 
@@ -103,13 +223,13 @@ async function renderEntries(entries) {
 
     editButton.addEventListener('click', async () => {
       const newQuantity = prompt(`Edit quantity for ${entry.food.name}:`, entry.quantity);
-      if (newQuantity && !isNaN(newQuantity)) {
+      if (newQuantity && !Number.isNaN(Number(newQuantity))) {
         try {
           await request(`/entries/${index}`, {
             method: 'PATCH',
             body: JSON.stringify({ quantity: parseFloat(newQuantity) }),
           });
-          await loadEntries(); // Reload entries and update the summary
+          await refreshCoreData();
         } catch (error) {
           alert(error.message);
         }
@@ -120,7 +240,7 @@ async function renderEntries(entries) {
       if (confirm(`Are you sure you want to delete ${entry.food.name}?`)) {
         try {
           await request(`/entries/${index}`, { method: 'DELETE' });
-          await loadEntries(); // Reload entries and update the summary
+          await refreshCoreData();
         } catch (error) {
           alert(error.message);
         }
@@ -131,58 +251,30 @@ async function renderEntries(entries) {
   });
 }
 
-async function renderSummary() {
+function renderSummary(summaryResponse) {
   const summaryContainer = document.getElementById('summary');
-  summaryContainer.innerHTML = ''; // Clear the summary container
+  summaryContainer.innerHTML = '';
 
-  try {
-    const response = await request('/summary');
-    const summaries = response.days;
-
-    if (!summaries.length) {
-      summaryContainer.textContent = 'No data available for today.';
-      return;
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    const todaySummary = summaries.find((log) => log.day === today);
-
-    if (!todaySummary || !todaySummary.entries.length) {
-      summaryContainer.textContent = 'No entries logged for today.';
-      return;
-    }
-
-    const totalCalories = todaySummary.total_calories.toFixed(0);
-    const macros = formatMacros(todaySummary.total_macronutrients);
-
-    summaryContainer.innerHTML = `
-      <p>Total Calories: <strong>${totalCalories} kcal</strong></p>
-      <p>Macronutrients: <strong>${macros}</strong></p>
-    `;
-  } catch (error) {
-    summaryContainer.textContent = 'Failed to load daily summary.';
-    console.error(error);
+  const summaries = summaryResponse?.days || [];
+  if (!summaries.length) {
+    renderEmptyState(summaryContainer, 'No days logged yet.');
+    return;
   }
-}
 
-
-async function loadEntries() {
-  try {
-    const response = await request('/entries');
-    await renderEntries(response);
-    await renderSummary(); // Ensure the summary is updated
-  } catch (error) {
-    console.error('Failed to load entries:', error);
-  }
-}
-
-async function loadSummary() {
-  try {
-    const summary = await request('/summary');
-    renderSummary(summary);
-  } catch (error) {
-    console.error(error);
-  }
+  summaries
+    .slice(-7)
+    .reverse()
+    .forEach((log) => {
+      const entryCount = log.entries.length;
+      const block = document.createElement('div');
+      block.className = 'summary-day';
+      block.innerHTML = `
+        <h3>${formatDate(log.day)}</h3>
+        <p><strong>${log.total_calories.toFixed(0)} kcal</strong> · ${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</p>
+        <p>${formatMacros(log.total_macronutrients)}</p>
+      `;
+      summaryContainer.appendChild(block);
+    });
 }
 
 function collectMacros(form) {
@@ -198,7 +290,79 @@ function collectMacros(form) {
   return macros;
 }
 
-async function setupScanForm() {
+function collectGoalPayload(form) {
+  const payload = { macronutrients: {} };
+  const caloriesRaw = form['goal-calories'].value.trim();
+  payload.calories = caloriesRaw ? Number(caloriesRaw) : null;
+
+  ['protein', 'carbs', 'fat'].forEach((nutrient) => {
+    const raw = form[`goal-${nutrient}`].value.trim();
+    if (raw) {
+      payload.macronutrients[nutrient] = Number(raw);
+    }
+  });
+
+  return payload;
+}
+
+function updateGoalStatus(message) {
+  const status = document.getElementById('goal-status');
+  if (status) {
+    status.textContent = message;
+  }
+}
+
+function populateGoalForm(goals) {
+  const form = document.getElementById('goal-form');
+  if (!form) return;
+
+  form['goal-calories'].value = goals.calories ?? '';
+  form['goal-protein'].value = goals.macronutrients?.protein ?? '';
+  form['goal-carbs'].value = goals.macronutrients?.carbs ?? '';
+  form['goal-fat'].value = goals.macronutrients?.fat ?? '';
+
+  if (goals.calories || Object.keys(goals.macronutrients || {}).length) {
+    updateGoalStatus('Goals loaded. Adjust them anytime you want to rebalance your plan.');
+  } else {
+    updateGoalStatus('Set calories and macros to get personalised progress tracking.');
+  }
+}
+
+async function loadEntriesAndSummary() {
+  try {
+    const [entries, summary] = await Promise.all([request('/entries'), request('/summary')]);
+    renderEntries(entries);
+    renderSummary(summary);
+  } catch (error) {
+    console.error('Failed to load entries or summary:', error);
+  }
+}
+
+async function loadStats() {
+  try {
+    const stats = await request('/stats');
+    renderProgress(stats);
+    renderWeekly(stats.weekly);
+    renderLifetime(stats.lifetime);
+  } catch (error) {
+    console.error('Failed to load stats:', error);
+  }
+}
+
+async function loadGoals() {
+  try {
+    const response = await request('/goals');
+    populateGoalForm(response.goals || {});
+  } catch (error) {
+    console.error('Failed to load goals:', error);
+  }
+}
+
+async function refreshCoreData() {
+  await Promise.all([loadEntriesAndSummary(), loadStats()]);
+}
+
+function setupScanForm() {
   const form = document.getElementById('scan-form');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -208,10 +372,7 @@ async function setupScanForm() {
 
     form.querySelector('button').disabled = true;
     try {
-      const results = await request(`/foods/search?query=${encodeURIComponent(query)}`, {
-        method: 'GET',
-        headers: {},
-      });
+      const results = await request(`/foods/search?query=${encodeURIComponent(query)}`);
       renderScanResults(results);
     } catch (error) {
       alert(error.message);
@@ -221,7 +382,7 @@ async function setupScanForm() {
   });
 }
 
-async function setupManualForm() {
+function setupManualForm() {
   const form = document.getElementById('manual-form');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -246,7 +407,42 @@ async function setupManualForm() {
       }
       form.reset();
       form['manual-quantity'].value = '1';
-      await Promise.all([loadEntries(), loadSummary()]);
+      await refreshCoreData();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+}
+
+function setupGoalForm() {
+  const form = document.getElementById('goal-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = collectGoalPayload(form);
+    try {
+      await request('/goals', { method: 'PUT', body: JSON.stringify(payload) });
+      updateGoalStatus('Goals saved. Today’s progress just refreshed.');
+      await loadStats();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
+
+  const resetButton = document.getElementById('goal-reset');
+  resetButton.addEventListener('click', async () => {
+    try {
+      await request('/goals', {
+        method: 'PUT',
+        body: JSON.stringify({
+          calories: null,
+          macronutrients: { protein: null, carbs: null, fat: null },
+        }),
+      });
+      form.reset();
+      updateGoalStatus('Goals cleared. Set new targets whenever you are ready.');
+      await loadStats();
     } catch (error) {
       alert(error.message);
     }
@@ -254,9 +450,10 @@ async function setupManualForm() {
 }
 
 async function init() {
-  await Promise.all([loadEntries(), loadSummary()]);
+  await Promise.all([loadEntriesAndSummary(), loadStats(), loadGoals()]);
   setupScanForm();
   setupManualForm();
+  setupGoalForm();
 }
 
 init();
