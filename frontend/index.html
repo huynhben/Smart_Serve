@@ -21,6 +21,14 @@
           <button type="submit">Scan</button>
         </form>
         <div id="scan-results" class="scan-results" aria-live="polite"></div>
+        <div class="camera-section">
+          <h3>Or use your camera</h3>
+          <video id="camera-preview" autoplay playsinline></video>
+          <div class="camera-actions">
+            <button id="camera-capture" type="button">Capture & Scan</button>
+            <input id="camera-file" type="file" accept="image/*" />
+          </div>
+        </div>
       </section>
 
       <section class="card">
