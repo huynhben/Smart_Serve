@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, FastAPI, Query
+from fastapi import APIRouter, Depends, FastAPI, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from .ai import FoodRecognitionEngine
 from .models import DailyLog, FoodEntry, FoodItem
 from .tracker import FoodTracker
+from . import vision
 
 
 class FoodPayload(BaseModel):
@@ -158,6 +159,34 @@ def create_entry(payload: EntryPayload, tracker: FoodTracker = Depends(get_track
 def summary(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
     logs = [_serialise_daily_log(log) for log in tracker.daily_summary()]
     return {"days": logs}
+
+
+@api_router.post("/scan-image")
+async def scan_image(file: UploadFile = File(...)) -> Dict[str, object]:
+    """Accept an uploaded image and return candidate food matches."""
+    data = await file.read()
+    results = vision.match_image_to_foods(data, top_k=5)
+    items = []
+    for r in results:
+        # r['food'] is the raw dict from foods.json
+        try:
+            food_obj = FoodItem(
+                name=r['food'].get('name'),
+                serving_size=r['food'].get('serving_size'),
+                calories=r['food'].get('calories'),
+                macronutrients=r['food'].get('macronutrients', {}),
+                aliases=r['food'].get('aliases', []),
+            )
+        except Exception:
+            # fallback: pass through the dict
+            food_obj = None
+
+        if food_obj is not None:
+            items.append({"food": _serialise_food(food_obj), "confidence": r.get("confidence", 0.0)})
+        else:
+            items.append({"food": r['food'], "confidence": r.get("confidence", 0.0)})
+
+    return {"items": items}
 
 
 class EditEntryPayload(BaseModel):
