@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Dict, Iterable, List
 
 
@@ -31,7 +31,7 @@ class FoodEntry:
 
     food: FoodItem
     quantity: float = 1.0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def calories(self) -> float:

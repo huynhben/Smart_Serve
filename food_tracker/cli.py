@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import date
 from typing import Iterable
 
@@ -28,8 +29,15 @@ def _print_daily_log(log) -> None:
 
 class CLI:
     def __init__(self) -> None:
-        recogniser = FoodRecognitionEngine()
-        self.tracker = FoodTracker(recogniser=recogniser)
+        try:
+            recogniser = FoodRecognitionEngine()
+            self.tracker = FoodTracker(recogniser=recogniser)
+        except FileNotFoundError as e:
+            print(f"Error: Food database not found: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: Failed to initialize food tracker: {e}", file=sys.stderr)
+            sys.exit(1)
 
     def run(self, argv: Iterable[str] | None = None) -> None:
         parser = argparse.ArgumentParser(description="AI-assisted food tracking")
@@ -67,8 +75,12 @@ class CLI:
         elif args.command == "log":
             self._handle_log(args.description, args.quantity)
         elif args.command == "summary":
-            target_date = date.fromisoformat(args.date) if args.date else date.today()
-            self._handle_summary(target_date)
+            try:
+                target_date = date.fromisoformat(args.date) if args.date else date.today()
+                self._handle_summary(target_date)
+            except ValueError as e:
+                print(f"Error: Invalid date format. Use YYYY-MM-DD format. {e}", file=sys.stderr)
+                sys.exit(1)
         elif args.command == "foods":
             self._handle_foods(args.limit)
 
@@ -86,34 +98,69 @@ class CLI:
             )
 
     def _handle_manual_add(self, args: argparse.Namespace) -> None:
-        macros = {
-            "carbs": args.carbs,
-            "protein": args.protein,
-            "fat": args.fat,
-        }
-        entry = self.tracker.manual_food_entry(
-            name=args.name,
-            serving_size=args.serving_size,
-            calories=args.calories,
-            quantity=args.quantity,
-            macronutrients=macros,
-        )
-        print(
-            f"Logged {entry.food.name} x{entry.quantity:g} "
-            f"({entry.calories:.0f} kcal, {_format_macros(entry.macronutrients)})"
-        )
+        try:
+            # Validate inputs
+            if args.calories < 0:
+                print(f"Error: Calories cannot be negative, got {args.calories}", file=sys.stderr)
+                sys.exit(1)
+            if args.quantity <= 0:
+                print(f"Error: Quantity must be positive, got {args.quantity}", file=sys.stderr)
+                sys.exit(1)
+            if args.carbs < 0 or args.protein < 0 or args.fat < 0:
+                print("Error: Macronutrients cannot be negative", file=sys.stderr)
+                sys.exit(1)
+            
+            macros = {
+                "carbs": args.carbs,
+                "protein": args.protein,
+                "fat": args.fat,
+            }
+            entry = self.tracker.manual_food_entry(
+                name=args.name,
+                serving_size=args.serving_size,
+                calories=args.calories,
+                quantity=args.quantity,
+                macronutrients=macros,
+            )
+            print(
+                f"Logged {entry.food.name} x{entry.quantity:g} "
+                f"({entry.calories:.0f} kcal, {_format_macros(entry.macronutrients)})"
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except IOError as e:
+            print(f"Error: Failed to save entry: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: Unexpected error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     def _handle_log(self, description: str, quantity: float) -> None:
-        results = self.tracker.scan_description(description)
-        if not results:
-            print("Could not recognise the food. Use 'add' to create a manual entry.")
-            return
-        best_match = results[0]
-        entry = self.tracker.log_food(best_match.item, quantity=quantity)
-        print(
-            f"Logged {entry.food.name} x{entry.quantity:g} "
-            f"({entry.calories:.0f} kcal, {_format_macros(entry.macronutrients)})"
-        )
+        try:
+            if quantity <= 0:
+                print(f"Error: Quantity must be positive, got {quantity}", file=sys.stderr)
+                sys.exit(1)
+            
+            results = self.tracker.scan_description(description)
+            if not results:
+                print("Could not recognise the food. Use 'add' to create a manual entry.")
+                return
+            best_match = results[0]
+            entry = self.tracker.log_food(best_match.item, quantity=quantity)
+            print(
+                f"Logged {entry.food.name} x{entry.quantity:g} "
+                f"({entry.calories:.0f} kcal, {_format_macros(entry.macronutrients)})"
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        except IOError as e:
+            print(f"Error: Failed to save entry: {e}", file=sys.stderr)
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error: Unexpected error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     def _handle_summary(self, target_day: date) -> None:
         log = self.tracker.entries_for_day(target_day)
