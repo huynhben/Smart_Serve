@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, FastAPI, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
@@ -219,13 +219,19 @@ class EditEntryPayload(BaseModel):
 @api_router.delete("/entries/{entry_id}", status_code=204)
 def delete_entry(entry_id: int, tracker: FoodTracker = Depends(get_tracker)) -> None:
     """Delete a food entry by its ID."""
-    tracker.remove_entry(entry_id)
+    try:
+        tracker.remove_entry(entry_id)
+    except IndexError:
+        raise HTTPException(status_code=404, detail=f"Entry with ID {entry_id} not found")
 
 @api_router.patch("/entries/{entry_id}", status_code=200)
 def update_entry(entry_id: int, payload: EditEntryPayload, tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
     """Update the quantity of a food entry."""
-    entry = tracker.edit_entry(entry_id, payload.quantity)
-    return _serialise_entry(entry)
+    try:
+        entry = tracker.edit_entry(entry_id, payload.quantity)
+        return _serialise_entry(entry)
+    except IndexError:
+        raise HTTPException(status_code=404, detail=f"Entry with ID {entry_id} not found")
 
 app.include_router(api_router)
 

@@ -318,3 +318,104 @@ class TestStatsEndpoint:
         assert isinstance(weekly["days"], list)
         lifetime = data["lifetime"]
         assert lifetime["total_entries"] >= 1
+
+
+class TestDeleteEntry:
+    """Tests for DELETE /api/entries/{entry_id} endpoint."""
+
+    def test_delete_entry_success(self, client, sample_food_payload):
+        """Test successfully deleting an entry."""
+        # Create an entry
+        entry_payload = {"food": sample_food_payload, "quantity": 1.0}
+        response = client.post("/api/entries", json=entry_payload)
+        assert response.status_code == 201
+
+        # Delete the entry (entry_id is 0 for the first entry)
+        response = client.delete("/api/entries/0")
+        assert response.status_code == 204
+
+        # Verify entry is deleted
+        response = client.get("/api/entries")
+        data = response.json()
+        assert len(data["items"]) == 0
+
+    def test_delete_entry_not_found(self, client):
+        """Test deleting a non-existent entry returns 404."""
+        response = client.delete("/api/entries/999")
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+        assert "not found" in data["detail"].lower()
+
+    def test_delete_entry_negative_id(self, client):
+        """Test deleting with negative entry ID returns 404."""
+        response = client.delete("/api/entries/-1")
+        assert response.status_code == 404
+
+    def test_delete_entry_multiple_entries(self, client, sample_food_payload):
+        """Test deleting a specific entry when multiple exist."""
+        # Create multiple entries
+        for _ in range(3):
+            client.post("/api/entries", json={"food": sample_food_payload, "quantity": 1.0})
+
+        # Delete the middle entry (index 1)
+        response = client.delete("/api/entries/1")
+        assert response.status_code == 204
+
+        # Verify only 2 entries remain
+        response = client.get("/api/entries")
+        data = response.json()
+        assert len(data["items"]) == 2
+
+
+class TestUpdateEntry:
+    """Tests for PATCH /api/entries/{entry_id} endpoint."""
+
+    def test_update_entry_success(self, client, sample_food_payload):
+        """Test successfully updating an entry quantity."""
+        # Create an entry
+        entry_payload = {"food": sample_food_payload, "quantity": 1.0}
+        response = client.post("/api/entries", json=entry_payload)
+        assert response.status_code == 201
+        initial_data = response.json()
+
+        # Update the entry quantity (entry_id is 0 for the first entry)
+        update_payload = {"quantity": 2.5}
+        response = client.patch("/api/entries/0", json=update_payload)
+        assert response.status_code == 200
+        updated_data = response.json()
+        assert updated_data["quantity"] == 2.5
+        assert updated_data["food"]["name"] == initial_data["food"]["name"]
+        # Calories should be updated based on new quantity
+        assert updated_data["calories"] == initial_data["food"]["calories"] * 2.5
+
+    def test_update_entry_not_found(self, client):
+        """Test updating a non-existent entry returns 404."""
+        update_payload = {"quantity": 2.0}
+        response = client.patch("/api/entries/999", json=update_payload)
+        assert response.status_code == 404
+        data = response.json()
+        assert "detail" in data
+        assert "not found" in data["detail"].lower()
+
+    def test_update_entry_negative_id(self, client):
+        """Test updating with negative entry ID returns 404."""
+        update_payload = {"quantity": 2.0}
+        response = client.patch("/api/entries/-1", json=update_payload)
+        assert response.status_code == 404
+
+    def test_update_entry_validation(self, client, sample_food_payload):
+        """Test that invalid quantity values are rejected."""
+        # Create an entry first
+        entry_payload = {"food": sample_food_payload, "quantity": 1.0}
+        client.post("/api/entries", json=entry_payload)
+
+        # Try to update with negative quantity
+        update_payload = {"quantity": -1.0}
+        response = client.patch("/api/entries/0", json=update_payload)
+        assert response.status_code == 422  # Validation error
+
+        # Try to update with zero quantity
+        update_payload = {"quantity": 0.0}
+        response = client.patch("/api/entries/0", json=update_payload)
+        assert response.status_code == 422  # Validation error
