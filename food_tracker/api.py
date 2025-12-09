@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import base64
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -16,6 +17,7 @@ from .ai import FoodRecognitionEngine
 from .models import DailyLog, FoodEntry, FoodItem, UNSET
 from .storage import FoodLogRepository, NutritionGoalRepository
 from .tracker import FoodTracker
+from .vision import VisionAIUnavailable, analyse_food_image
 
 
 class FoodPayload(BaseModel):
@@ -40,6 +42,13 @@ class CustomFoodPayload(FoodPayload):
     """Schema for registering a custom food in the recogniser."""
 
     pass
+
+
+class ImageScanPayload(BaseModel):
+    """Schema for requesting an image-based scan."""
+
+    image_base64: str = Field(..., min_length=10)
+    top_k: int = Field(default=3, ge=1, le=5)
 
 
 class GoalsPayload(BaseModel):
@@ -97,6 +106,20 @@ def get_tracker() -> FoodTracker:
 api_router = APIRouter(prefix="/api")
 
 
+def _decode_image_payload(raw_value: str, max_bytes: int = 5 * 1024 * 1024) -> bytes:
+    """Decode a base64 image payload, stripping data URLs if present."""
+
+    payload = raw_value.split(",", 1)[1] if "," in raw_value else raw_value
+    try:
+        image_bytes = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise ValueError("Invalid base64 image data.") from exc
+
+    if len(image_bytes) > max_bytes:
+        raise ValueError("Image payload is too large (max 5MB).")
+    return image_bytes
+
+
 def _serialise_food(item: FoodItem) -> Dict[str, object]:
     return {
         "name": item.name,
@@ -149,6 +172,31 @@ def search_foods(query: str = Query("", min_length=0), tracker: FoodTracker = De
 def library(tracker: FoodTracker = Depends(get_tracker)) -> Dict[str, object]:
     items = [_serialise_food(item) for item in tracker.recogniser.known_items()]
     return {"items": items}
+
+
+@api_router.post("/foods/scan-image")
+def scan_image(payload: ImageScanPayload) -> Dict[str, object]:
+    try:
+        image_bytes = _decode_image_payload(payload.image_base64)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        predictions = analyse_food_image(image_bytes, top_k=payload.top_k)
+    except VisionAIUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=502, detail="Vision model failed.") from exc
+
+    return {
+        "items": [
+            {
+                "food": _serialise_food(prediction.item),
+                "confidence": prediction.confidence,
+            }
+            for prediction in predictions
+        ]
+    }
 
 
 @api_router.post("/foods", status_code=201)

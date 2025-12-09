@@ -58,3 +58,23 @@ Features at a Glance
 - Personalised nutrition goals with live progress bars for calories and macros.
 - Weekly insights with streak tracking, per-day calorie totals, and lifetime stats.
 - New API endpoints (`/api/goals`, `/api/stats`) plus CLI helpers (`goals`, `stats`) for advanced workflows.
+
+Mobile camera scanning (Expo Go)
+1) Enable vision AI on the backend (required):
+   - Provide an OpenAI key: `export OPENAI_API_KEY=...`
+   - Start the API bound to your LAN IP so your phone can reach it:
+     `uvicorn food_tracker.api:app --host 0.0.0.0 --port 8000 --reload`
+
+2) Install the mobile app dependencies (from the repo root):
+   - `cd mobile && npm install` (requires network access)
+
+3) Point the app at your backend:
+   - Set `EXPO_PUBLIC_API_BASE=http://<your-lan-ip>:8000/api`
+
+4) Run the Expo dev server and open the project in Expo Go on your phone:
+   - `npm start` (inside `mobile/`), then scan the QR code with Expo Go.
+
+5) In the app, tap Take photo (or Choose from library), then Scan image. The app will:
+   - Capture the image
+   - Send it to `/api/foods/scan-image`
+   - Display predicted foods/macros with a Log button that calls `/api/entries`
